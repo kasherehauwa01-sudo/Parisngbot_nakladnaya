@@ -10,6 +10,7 @@ from typing import List, Set
 import imaplib
 import pandas as pd
 import streamlit as st
+import xlwt
 
 
 logging.basicConfig(
@@ -144,9 +145,19 @@ def build_report(invoices: List[str]) -> pd.DataFrame:
 
 
 def dataframe_to_xls(df: pd.DataFrame) -> io.BytesIO:
-    """Сохраняет DataFrame в XLS (xlwt) и возвращает BytesIO."""
+    """Сохраняет DataFrame в XLS через xlwt и возвращает BytesIO."""
     output = io.BytesIO()
-    df.to_excel(output, index=False, engine="xlwt")
+    workbook = xlwt.Workbook()
+    sheet = workbook.add_sheet("Отчет")
+
+    for col_index, column_name in enumerate(df.columns):
+        sheet.write(0, col_index, column_name)
+
+    for row_index, row in enumerate(df.itertuples(index=False), start=1):
+        for col_index, value in enumerate(row):
+            sheet.write(row_index, col_index, value)
+
+    workbook.save(output)
     output.seek(0)
     return output
 
