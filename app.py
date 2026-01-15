@@ -128,9 +128,12 @@ def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.da
                 invoices.extend(extracted)
 
             return invoices
-    except Exception:
+    except imaplib.IMAP4.error as exc:
+        logger.exception("Ошибка IMAP-аутентификации или доступа")
+        raise RuntimeError("Ошибка IMAP-аутентификации. Проверьте логин и пароль.") from exc
+    except Exception as exc:
         logger.exception("Ошибка работы с IMAP")
-        raise
+        raise RuntimeError("Ошибка подключения к IMAP. Проверьте настройки сервера и лог.") from exc
 
 
 def build_report(invoices: List[str]) -> pd.DataFrame:
@@ -172,8 +175,8 @@ def main() -> None:
         except KeyError:
             st.error("Не найдены настройки email в st.secrets. Проверьте secrets.toml.")
             return
-        except Exception:
-            st.error("Ошибка подключения к почте или обработки писем. Проверьте лог.")
+        except RuntimeError as exc:
+            st.error(str(exc))
             return
 
         if not invoices:
