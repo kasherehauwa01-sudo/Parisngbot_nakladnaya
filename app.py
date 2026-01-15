@@ -176,36 +176,59 @@ def main() -> None:
         submitted = st.form_submit_button("Запустить поиск")
 
     if submitted:
+        progress = st.progress(0, text="🐱 Подключаюсь к IMAP...")
+        cat_placeholder = st.empty()
+        cat_placeholder.markdown(
+            "```\n"
+            " /\\_/\\\n"
+            "( o.o )\n"
+            " > ^ <\n"
+            "```\n"
+        )
+
         if start_date > end_date:
             st.error("Дата начала не может быть позже даты окончания.")
             logger.error("Некорректный диапазон дат: %s - %s", start_date, end_date)
+            progress.empty()
+            cat_placeholder.empty()
             return
 
         try:
             invoices = fetch_invoices(sender, start_date, end_date)
         except KeyError:
             st.error("Не найдены настройки email в st.secrets. Проверьте secrets.toml.")
+            progress.empty()
+            cat_placeholder.empty()
             return
         except RuntimeError as exc:
             st.error(str(exc))
+            progress.empty()
+            cat_placeholder.empty()
             return
 
         if not invoices:
             st.warning("За выбранный период накладные не найдены")
             logger.info("Накладные за период не найдены")
+            progress.empty()
+            cat_placeholder.empty()
             return
 
+        progress.progress(60, text="🐱 Готовлю отчет...")
         df = build_report(invoices)
         st.dataframe(df)
 
         file_name = f"nakladnye_{start_date:%Y%m%d}-{end_date:%Y%m%d}.xls"
         xls_data = dataframe_to_xls(df)
+        progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
             label="Скачать XLS",
             data=xls_data,
             file_name=file_name,
             mime="application/vnd.ms-excel",
         )
+
+        progress.empty()
+        cat_placeholder.empty()
 
 
 if __name__ == "__main__":
