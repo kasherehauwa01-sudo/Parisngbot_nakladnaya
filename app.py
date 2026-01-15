@@ -166,13 +166,19 @@ def main() -> None:
     """Основная функция Streamlit-приложения."""
     st.title("Поиск накладных по IMAP")
 
+    sender = "robot_volgorost@volgorost.ru"
+
     with st.form("search_form"):
-        sender = st.text_input(
-            "Email отправителя",
-            value="robot_volgorost@volgorost.ru",
+        start_date = st.date_input(
+            "Дата начала периода",
+            value=datetime.date.today(),
+            format="DD.MM.YYYY",
         )
-        start_date = st.date_input("Дата начала периода", value=datetime.date.today())
-        end_date = st.date_input("Дата окончания периода", value=datetime.date.today())
+        end_date = st.date_input(
+            "Дата окончания периода",
+            value=datetime.date.today(),
+            format="DD.MM.YYYY",
+        )
         submitted = st.form_submit_button("Запустить поиск")
 
     if submitted:
@@ -217,7 +223,7 @@ def main() -> None:
         df = build_report(invoices)
         st.dataframe(df)
 
-        file_name = f"nakladnye_{start_date:%Y%m%d}-{end_date:%Y%m%d}.xls"
+        file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
         xls_data = dataframe_to_xls(df)
         progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
