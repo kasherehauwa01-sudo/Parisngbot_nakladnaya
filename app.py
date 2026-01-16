@@ -232,6 +232,20 @@ def main() -> None:
 
     sender = "robot_volgorost@volgorost.ru"
 
+    with st.expander("Логи (последние 200 строк)", expanded=False):
+        try:
+            with open("app.log", "r", encoding="utf-8") as log_file:
+                log_lines = log_file.readlines()[-200:]
+            if log_lines:
+                st.text("".join(log_lines))
+            else:
+                st.info("Логи пока пусты.")
+        except FileNotFoundError:
+            st.info("Файл логов ещё не создан.")
+        except Exception as exc:
+            logger.exception("Ошибка чтения логов в UI")
+            st.error(f"Не удалось прочитать лог: {exc}")
+
     with st.form("search_form"):
         start_date = st.date_input(
             "Дата начала периода",
@@ -286,21 +300,19 @@ def main() -> None:
         progress.progress(60, text="🐱 Готовлю отчет...")
         df = build_report(invoices)
 
-        select_all = st.checkbox("Выделить все / снять все", value=True)
+        select_all = st.checkbox("Выделить все / снять все", value=True, key="select_all")
         df_for_editor = df.copy()
         df_for_editor.insert(0, "Выбрать", select_all)
         edited_df = st.data_editor(
             df_for_editor,
             hide_index=True,
             column_config={"Выбрать": st.column_config.CheckboxColumn(required=True)},
+            key="invoice_selector",
         )
 
         selected_df = edited_df[edited_df["Выбрать"]].drop(columns=["Выбрать"])
         if selected_df.empty:
             st.warning("Нет выбранных накладных для выгрузки.")
-            progress.empty()
-            cat_placeholder.empty()
-            return
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
         xls_data = dataframe_to_xls(selected_df[["Дата"]])
@@ -310,6 +322,7 @@ def main() -> None:
             data=xls_data,
             file_name=file_name,
             mime="application/vnd.ms-excel",
+            disabled=selected_df.empty,
         )
 
         progress.empty()
