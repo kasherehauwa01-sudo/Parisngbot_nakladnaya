@@ -232,6 +232,13 @@ def main() -> None:
 
     sender = "robot_volgorost@volgorost.ru"
 
+    if "report_df" not in st.session_state:
+        st.session_state.report_df = None
+    if "selection_df" not in st.session_state:
+        st.session_state.selection_df = None
+    if "select_all_prev" not in st.session_state:
+        st.session_state.select_all_prev = True
+
     with st.expander("Логи (последние 200 строк)", expanded=False):
         try:
             with open("app.log", "r", encoding="utf-8") as log_file:
@@ -299,16 +306,35 @@ def main() -> None:
 
         progress.progress(60, text="🐱 Готовлю отчет...")
         df = build_report(invoices)
+        st.session_state.report_df = df
+        st.session_state.selection_df = None
+        st.session_state.select_all_prev = True
+
+        progress.empty()
+        cat_placeholder.empty()
+
+    if st.session_state.report_df is not None:
+        report_df = st.session_state.report_df
 
         select_all = st.checkbox("Выделить все / снять все", value=True, key="select_all")
-        df_for_editor = df.copy()
-        df_for_editor.insert(0, "Выбрать", select_all)
+        if st.session_state.selection_df is None:
+            selection_df = report_df.copy()
+            selection_df.insert(0, "Выбрать", True)
+        else:
+            selection_df = st.session_state.selection_df
+
+        if select_all != st.session_state.select_all_prev:
+            selection_df = selection_df.copy()
+            selection_df["Выбрать"] = select_all
+            st.session_state.select_all_prev = select_all
+
         edited_df = st.data_editor(
-            df_for_editor,
+            selection_df,
             hide_index=True,
             column_config={"Выбрать": st.column_config.CheckboxColumn(required=True)},
             key="invoice_selector",
         )
+        st.session_state.selection_df = edited_df
 
         selected_df = edited_df[edited_df["Выбрать"]].drop(columns=["Выбрать"])
         if selected_df.empty:
@@ -316,7 +342,6 @@ def main() -> None:
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
         xls_data = dataframe_to_xls(selected_df[["Дата"]])
-        progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
             label="Скачать XLS",
             data=xls_data,
@@ -324,9 +349,6 @@ def main() -> None:
             mime="application/vnd.ms-excel",
             disabled=selected_df.empty,
         )
-
-        progress.empty()
-        cat_placeholder.empty()
 
 
 if __name__ == "__main__":
