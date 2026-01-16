@@ -5,7 +5,7 @@ import re
 from email import policy
 from email.parser import BytesParser
 from html import unescape
-from typing import List, Set
+from typing import List, Set, Tuple
 
 import imaplib
 import pandas as pd
@@ -81,13 +81,13 @@ def extract_text_from_message(message) -> str:
     return "\n".join(parts_text)
 
 
-def extract_invoices_from_text(text: str) -> List[str]:
-    """Ищет номера накладных по шаблону "Приходная накл. <номер> (дата)"."""
-    pattern = r"Приходная накл\.\s+([^\s(]+)"
+def extract_invoices_from_text(text: str) -> List[Tuple[str, str]]:
+    """Ищет номера накладных и даты по шаблону "Приходная накл. <номер> (дата)"."""
+    pattern = r"Приходная накл\.\s+([^\s(]+)\s*\(([^)]+)\)"
     return re.findall(pattern, text)
 
 
-def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.date) -> List[str]:
+def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.date) -> List[Tuple[str, str]]:
     """Подключается к IMAP и извлекает номера накладных из писем."""
     email_config = load_email_config()
     host = email_config["IMAP_HOST"]
@@ -114,7 +114,7 @@ def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.da
             message_ids = data[0].split()
             logger.info("Найдено писем: %s", len(message_ids))
 
-            invoices: List[str] = []
+            invoices: List[Tuple[str, str]] = []
             for msg_id in message_ids:
                 status, msg_data = imap.fetch(msg_id, "(RFC822)")
                 if status != "OK" or not msg_data:
@@ -137,11 +137,11 @@ def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.da
         raise RuntimeError("Ошибка подключения к IMAP. Проверьте настройки сервера и лог.") from exc
 
 
-def build_report(invoices: List[str]) -> pd.DataFrame:
-    """Формирует DataFrame с уникальными накладными."""
-    unique_invoices: Set[str] = sorted(set(invoices))
+def build_report(invoices: List[Tuple[str, str]]) -> pd.DataFrame:
+    """Формирует DataFrame с уникальными накладными и датами."""
+    unique_invoices: List[Tuple[str, str]] = sorted(set(invoices))
     logger.info("Уникальных накладных: %s", len(unique_invoices))
-    return pd.DataFrame({"Накладная": list(unique_invoices)})
+    return pd.DataFrame(unique_invoices, columns=["Накладная", "Дата"])
 
 
 def dataframe_to_xls(df: pd.DataFrame) -> io.BytesIO:
@@ -150,10 +150,7 @@ def dataframe_to_xls(df: pd.DataFrame) -> io.BytesIO:
     workbook = xlwt.Workbook()
     sheet = workbook.add_sheet("Отчет")
 
-    for col_index, column_name in enumerate(df.columns):
-        sheet.write(0, col_index, column_name)
-
-    for row_index, row in enumerate(df.itertuples(index=False), start=1):
+    for row_index, row in enumerate(df.itertuples(index=False), start=0):
         for col_index, value in enumerate(row):
             sheet.write(row_index, col_index, value)
 
