@@ -13,6 +13,32 @@ import streamlit as st
 import xlwt
 
 
+EXCLUDED_USERS = {
+    "Авраменко Наталия",
+    "Вифлянцев А.В.",
+    "Воробьева",
+    "Горностаева",
+    "Гринчук Ольга",
+    "Гулуева Татьяна",
+    "Дегтярев Алексей",
+    "Дегтярева О.А.",
+    "Джиоева Ирина Витальевна",
+    "Заподовникова И.",
+    "Зеленская Галина",
+    "Земцова",
+    "Золотова Наталья",
+    "Кирпичева",
+    "Клишина Александра",
+    "КонтроллерПеремещения1",
+    "Коронова О.",
+    "Куприянова О.В.",
+    "МагазинПриемка3",
+    "Майданик Ирина",
+    "Пименова Вал.Ром.",
+    "Скоробогатова Вера",
+    "СтройградСклад1",
+}
+
 logging.basicConfig(
     filename="app.log",
     level=logging.INFO,
@@ -160,10 +186,16 @@ def parse_invoice_date(raw_date: str) -> Optional[datetime.date]:
 def build_report(invoices: List[Tuple[str, str, str]]) -> pd.DataFrame:
     """Формирует DataFrame с уникальными накладными, датами и пользователями, сортирует по дате."""
     unique_invoices: List[Tuple[str, str, str]] = sorted(set(invoices))
+    filtered_invoices = [
+        (invoice_number, raw_date, user)
+        for invoice_number, raw_date, user in unique_invoices
+        if user not in EXCLUDED_USERS
+    ]
     logger.info("Уникальных накладных: %s", len(unique_invoices))
+    logger.info("Накладных после фильтрации по пользователям: %s", len(filtered_invoices))
 
     rows = []
-    for invoice_number, raw_date, user in unique_invoices:
+    for invoice_number, raw_date, user in filtered_invoices:
         parsed_date = parse_invoice_date(raw_date)
         rows.append(
             {
@@ -211,8 +243,6 @@ def main() -> None:
             value=datetime.date.today(),
             format="DD.MM.YYYY",
         )
-        include_date = st.checkbox("Дата", value=False)
-        include_user = st.checkbox("Пользователь", value=False)
         submitted = st.form_submit_button("Запустить поиск")
 
     if submitted:
@@ -255,15 +285,25 @@ def main() -> None:
 
         progress.progress(60, text="🐱 Готовлю отчет...")
         df = build_report(invoices)
-        st.dataframe(df)
+
+        select_all = st.checkbox("Выделить все / снять все", value=True)
+        df_for_editor = df.copy()
+        df_for_editor.insert(0, "Выбрать", select_all)
+        edited_df = st.data_editor(
+            df_for_editor,
+            hide_index=True,
+            column_config={"Выбрать": st.column_config.CheckboxColumn(required=True)},
+        )
+
+        selected_df = edited_df[edited_df["Выбрать"]].drop(columns=["Выбрать"])
+        if selected_df.empty:
+            st.warning("Нет выбранных накладных для выгрузки.")
+            progress.empty()
+            cat_placeholder.empty()
+            return
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
-        xls_columns = ["Накладная"]
-        if include_date:
-            xls_columns.append("Дата")
-        if include_user:
-            xls_columns.append("Пользователь")
-        xls_data = dataframe_to_xls(df[xls_columns])
+        xls_data = dataframe_to_xls(selected_df[["Дата"]])
         progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
             label="Скачать XLS",
