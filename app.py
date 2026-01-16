@@ -211,6 +211,8 @@ def main() -> None:
             value=datetime.date.today(),
             format="DD.MM.YYYY",
         )
+        include_date = st.checkbox("Дата", value=False)
+        include_user = st.checkbox("Пользователь", value=False)
         submitted = st.form_submit_button("Запустить поиск")
 
     if submitted:
@@ -256,7 +258,12 @@ def main() -> None:
         st.dataframe(df)
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
-        xls_data = dataframe_to_xls(df[["Накладная", "Пользователь"]])
+        xls_columns = ["Накладная"]
+        if include_date:
+            xls_columns.append("Дата")
+        if include_user:
+            xls_columns.append("Пользователь")
+        xls_data = dataframe_to_xls(df[xls_columns])
         progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
             label="Скачать XLS",
