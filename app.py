@@ -5,7 +5,7 @@ import re
 from email import policy
 from email.parser import BytesParser
 from html import unescape
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 import imaplib
 import pandas as pd
@@ -81,13 +81,23 @@ def extract_text_from_message(message) -> str:
     return "\n".join(parts_text)
 
 
-def extract_invoices_from_text(text: str) -> List[Tuple[str, str]]:
+def extract_user_from_text(text: str) -> Optional[str]:
+    """Извлекает пользователя из текста письма по шаблону "Пользователь: <имя> провел"."""
+    match = re.search(r"Пользователь:\s*(.*?)\s+провел", text)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+def extract_invoices_from_text(text: str) -> List[Tuple[str, str, str]]:
     """Ищет номера накладных и даты по шаблону "Приходная накл. <номер> (дата)"."""
     pattern = r"Приходная накл\.\s+([^\s(]+)\s*\(([^)]+)\)"
-    return re.findall(pattern, text)
+    user = extract_user_from_text(text) or "Неизвестно"
+    matches = re.findall(pattern, text)
+    return [(invoice_number, invoice_date, user) for invoice_number, invoice_date in matches]
 
 
-def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.date) -> List[Tuple[str, str]]:
+def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.date) -> List[Tuple[str, str, str]]:
     """Подключается к IMAP и извлекает номера накладных из писем."""
     email_config = load_email_config()
     host = email_config["IMAP_HOST"]
@@ -114,7 +124,7 @@ def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.da
             message_ids = data[0].split()
             logger.info("Найдено писем: %s", len(message_ids))
 
-            invoices: List[Tuple[str, str]] = []
+            invoices: List[Tuple[str, str, str]] = []
             for msg_id in message_ids:
                 status, msg_data = imap.fetch(msg_id, "(RFC822)")
                 if status != "OK" or not msg_data:
@@ -137,11 +147,36 @@ def fetch_invoices(sender: str, start_date: datetime.date, end_date: datetime.da
         raise RuntimeError("Ошибка подключения к IMAP. Проверьте настройки сервера и лог.") from exc
 
 
-def build_report(invoices: List[Tuple[str, str]]) -> pd.DataFrame:
-    """Формирует DataFrame с уникальными накладными и датами."""
-    unique_invoices: List[Tuple[str, str]] = sorted(set(invoices))
+def parse_invoice_date(raw_date: str) -> Optional[datetime.date]:
+    """Пытается разобрать дату накладной из строки формата dd.mm.yy или dd.mm.yyyy."""
+    for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+        try:
+            return datetime.datetime.strptime(raw_date.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def build_report(invoices: List[Tuple[str, str, str]]) -> pd.DataFrame:
+    """Формирует DataFrame с уникальными накладными, датами и пользователями, сортирует по дате."""
+    unique_invoices: List[Tuple[str, str, str]] = sorted(set(invoices))
     logger.info("Уникальных накладных: %s", len(unique_invoices))
-    return pd.DataFrame(unique_invoices, columns=["Накладная", "Дата"])
+
+    rows = []
+    for invoice_number, raw_date, user in unique_invoices:
+        parsed_date = parse_invoice_date(raw_date)
+        rows.append(
+            {
+                "Накладная": invoice_number,
+                "Дата": raw_date,
+                "Пользователь": user,
+                "_sort_date": parsed_date or datetime.date.min,
+            }
+        )
+
+    df = pd.DataFrame(rows)
+    df = df.sort_values(by="_sort_date", ascending=True).drop(columns=["_sort_date"])
+    return df
 
 
 def dataframe_to_xls(df: pd.DataFrame) -> io.BytesIO:
@@ -221,7 +256,7 @@ def main() -> None:
         st.dataframe(df)
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
-        xls_data = dataframe_to_xls(df)
+        xls_data = dataframe_to_xls(df[["Накладная"]])
         progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
             label="Скачать XLS",
