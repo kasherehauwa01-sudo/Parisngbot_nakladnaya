@@ -238,6 +238,8 @@ def main() -> None:
         st.session_state.selection_df = None
     if "select_all_prev" not in st.session_state:
         st.session_state.select_all_prev = True
+    if "select_all" not in st.session_state:
+        st.session_state.select_all = True
 
     with st.expander("Логи (последние 200 строк)", expanded=False):
         try:
@@ -316,7 +318,7 @@ def main() -> None:
     if st.session_state.report_df is not None:
         report_df = st.session_state.report_df
 
-        select_all = st.checkbox("Выделить все / снять все", value=True, key="select_all")
+        select_all = st.checkbox("Выделить все / снять все", key="select_all")
         if st.session_state.selection_df is None:
             selection_df = report_df.copy()
             selection_df.insert(0, "Выбрать", True)
@@ -341,7 +343,7 @@ def main() -> None:
             st.warning("Нет выбранных накладных для выгрузки.")
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
-        xls_data = dataframe_to_xls(selected_df[["Дата"]])
+        xls_data = dataframe_to_xls(selected_df[["Накладная"]])
         st.download_button(
             label="Скачать XLS",
             data=xls_data,
