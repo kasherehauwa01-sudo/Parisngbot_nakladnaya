@@ -256,7 +256,7 @@ def main() -> None:
         st.dataframe(df)
 
         file_name = f"nakladnye_{start_date:%d.%m.%Y}-{end_date:%d.%m.%Y}.xls"
-        xls_data = dataframe_to_xls(df[["Накладная"]])
+        xls_data = dataframe_to_xls(df[["Накладная", "Пользователь"]])
         progress.progress(100, text="🐱 Отчет готов!")
         st.download_button(
             label="Скачать XLS",
